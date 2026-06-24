@@ -104,7 +104,7 @@ No build step, no framework, no backend.
 
 所有处理都在你的浏览器里完成。**无需服务器、不调用 AI、不花一分钱，文件也不会离开你的设备。**
 
-> 🔗 **在线使用：** `https://<你的用户名>.github.io/<仓库名>/`
+> 🔗 **在线使用：** `https://<zyq060830>.github.io/<history paper check>/`
 > *（部署后替换成你自己的链接——见 [部署教程](#部署教程)）*
 
 ---
