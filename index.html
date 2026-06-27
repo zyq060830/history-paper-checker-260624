@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>司直 · 历史论文体例检查工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root {
+    --bg: #F5F1EA;
+    --surface: #FEFCF7;
+    --border: #D4C4A4;
+    --accent: #3B2D1F;
+    --accent-mid: #7A5C3A;
+    --accent-light: #C4A878;
+    --red: #8B2E2E;
+    --green: #2E6B3E;
+    --amber: #8A6000;
+    --text: #2C2010;
+    --text-mid: #5A4830;
+    --text-light: #8B7A5A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, "Songti SC", "SimSun", serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  header {
+    border-bottom: 2px solid var(--accent);
+    padding: 18px 0 14px;
+    text-align: center;
+    background: var(--bg);
+  }
+  .eyebrow { font-size: 11px; letter-spacing: 0.2em; color: var(--accent-light); text-transform: uppercase; margin-bottom: 4px; }
+  h1 { font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: 0.04em; }
+  .subtitle { font-size: 12.5px; color: var(--text-light); margin-top: 6px; letter-spacing: 0.04em; line-height: 1.7; max-width: 560px; margin-left: auto; margin-right: auto; }
+  .container { max-width: 820px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  .mode-switch { display: flex; gap: 0; margin-bottom: 20px; border: 1.5px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .mode-btn { flex: 1; padding: 11px; background: var(--surface); border: none; cursor: pointer; font-family: inherit; font-size: 13.5px; color: var(--text-mid); transition: all 0.15s; }
+  .mode-btn.active { background: var(--accent); color: var(--bg); font-weight: 700; }
+
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 26px 20px;
+    text-align: center;
+    cursor: pointer;
+    background: var(--surface);
+    transition: all 0.15s;
+    margin-bottom: 14px;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent-light); background: #F0EBE0; }
+  .upload-zone.has-file { border-color: var(--accent-light); background: #F0EBE0; }
+  .upload-icon { font-size: 26px; margin-bottom: 8px; }
+  .upload-title { font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+  .upload-hint { font-size: 12px; color: var(--text-light); }
+  .upload-status { font-size: 12px; margin-top: 6px; }
+  .upload-status.ok { color: var(--green); }
+  .upload-status.err { color: var(--red); }
+
+  .divider { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+  .divider .line { flex: 1; height: 1px; background: var(--border); }
+  .divider span { font-size: 11px; color: var(--text-light); }
+
+  textarea {
+    width: 100%;
+    min-height: 180px;
+    border: 1.5px solid var(--border);
+    border-radius: 9px;
+    padding: 14px;
+    font-size: 13.5px;
+    line-height: 1.65;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--surface);
+    resize: vertical;
+    outline: none;
+  }
+  textarea:focus { border-color: var(--accent-light); }
+
+  .action-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 22px;
+    border-radius: 7px;
+    border: 1.5px solid var(--accent);
+    font-family: inherit;
+    font-size: 13.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .btn:hover { background: var(--accent-mid); border-color: var(--accent-mid); }
+  .btn:disabled { background: var(--border); border-color: var(--border); color: var(--text-light); cursor: not-allowed; }
+  .btn-ghost { background: var(--surface); color: var(--text); }
+  .btn-ghost:hover { background: var(--accent); color: var(--bg); }
+
+  /* Report */
+  .report { margin-top: 28px; }
+  .report-head {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+  }
+  .report-head .spec-name { font-size: 13px; color: var(--accent-mid); margin-bottom: 8px; }
+  .report-head .spec-name b { color: var(--accent); }
+  .summary-stats { display: flex; gap: 18px; flex-wrap: wrap; }
+  .stat { display: flex; align-items: baseline; gap: 5px; }
+  .stat .num { font-size: 24px; font-weight: 700; }
+  .stat .label { font-size: 12px; color: var(--text-light); }
+  .stat.ok .num { color: var(--green); }
+  .stat.err .num { color: var(--red); }
+  .stat.warn .num { color: var(--amber); }
+
+  .section-title {
+    font-size: 14px; font-weight: 700; margin: 20px 0 10px;
+    padding-bottom: 5px; border-bottom: 1px solid var(--border);
+  }
+  .section-title.ok { color: var(--green); }
+  .section-title.err { color: var(--red); }
+  .section-title.warn { color: var(--amber); }
+
+  .issue {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--red);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .issue.warn { border-left-color: var(--amber); }
+  .issue-title { font-weight: 700; color: var(--accent); font-size: 13.5px; margin-bottom: 6px; }
+  .issue-row { font-size: 12.5px; line-height: 1.6; margin-bottom: 3px; color: var(--text-mid); display: flex; gap: 6px; }
+  .issue-row .k { color: var(--text-light); flex-shrink: 0; min-width: 56px; }
+  .issue-row .v { color: var(--text); }
+  .issue-row code { background: #ECE4D0; border-radius: 3px; padding: 1px 5px; font-size: 12px; color: var(--accent-mid); }
+  .issue-row .src { color: var(--accent-light); font-style: italic; }
+
+  .pass-item { font-size: 13px; color: var(--text-mid); padding: 4px 0 4px 8px; display: flex; gap: 8px; }
+  .pass-item::before { content: "▸"; color: var(--green); }
+
+  .empty-pass { font-size: 13px; color: var(--text-light); padding: 8px; font-style: italic; }
+
+  footer { text-align: center; font-size: 11px; color: var(--text-light); padding: 20px; }
+  .disclaimer { background: #F0EBE0; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: var(--text-mid); margin-top: 24px; line-height: 1.7; }
+
+  @media print {
+    header, .mode-switch, .upload-zone, .divider, textarea, .action-row, footer, .disclaimer, .input-section { display: none !important; }
+    body { background: white; }
+    .issue, .report-head { break-inside: avoid; border: 1px solid #ccc; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">历史学术论文体例检查</div>
+  <h1>司直</h1>
+  <div class="subtitle">自动检查脚注、标题、文献著录是否符合《历史研究》或 Chicago 规范，上传 .docx 还可检测字体行距页边距</div>
+</header>
+
+<div class="container">
+  <div class="input-section">
+    <div class="mode-switch">
+      <button class="mode-btn active" id="modeAuto" onclick="setMode('auto')">自动判断语言</button>
+      <button class="mode-btn" id="modeCn" onclick="setMode('cn')">强制中文规范</button>
+      <button class="mode-btn" id="modeEn" onclick="setMode('en')">强制英文规范</button>
+    </div>
+
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-icon" id="uploadIcon">⬆️</div>
+      <div class="upload-title" id="uploadTitle">拖放或点击上传论文</div>
+      <div class="upload-hint" id="uploadHint">支持 .docx 和 .pdf · 文件在你的浏览器本地处理，不上传服务器</div>
+      <div class="upload-status" id="uploadStatus"></div>
+    </div>
+    <input type="file" id="fileInput" accept=".docx,.pdf,.txt" style="display:none">
+
+    <div class="divider"><div class="line"></div><span>或直接粘贴文本</span><div class="line"></div></div>
+
+    <textarea id="paperText" placeholder="把论文全文粘贴到这里……"></textarea>
+
+    <div class="action-row">
+      <button class="btn" id="checkBtn" onclick="runCheck()">检查格式</button>
+      <button class="btn btn-ghost" onclick="clearAll()">清空</button>
+    </div>
+  </div>
+
+  <div class="report" id="report" style="display:none"></div>
+
+  <div class="disclaimer" id="disclaimer">
+    <b>说明：</b>本工具基于格式规范进行<b>规则检查</b>，能识别脚注序号、标题层级、文献著录标点、结构完整性、标点规范等问题。
+    <br><b>上传 .docx 文件时</b>，还能检测<b>字体、字号、行距、页边距</b>是否符合规范。
+    <br><b>PDF 或粘贴文本</b>因不含可靠的格式信息，字体类项目无法检测，需在 Word 中人工核对。
+    <br>检查结果供参考，最终格式请对照规范原文确认。
+  </div>
+
+  <div class="upload-hint" style="text-align:center; margin-top:10px; color:var(--accent-light); font-size:11.5px;">
+    💡 想检测字体/字号/行距/页边距？请上传 <b>.docx</b> 格式（而非 PDF）
+  </div>
+</div>
+
+<footer>历史论文格式检查工具 · 纯本地运行 · 数据不外传<br>made by Kira Zhang</footer>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+let currentMode = "auto";
+let lastReport = null;
+let docxFormat = null; // 存储从 .docx 解析出的字体/字号/行距/页边距，非 docx 时为 null
+let originalDocxBuffer = null; // 存储上传的 .docx 原始字节，用于生成合规版本
+let originalDocxName = "";
+
+function setMode(m) {
+  currentMode = m;
+  document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("mode" + m.charAt(0).toUpperCase() + m.slice(1)).classList.add("active");
+}
+
+/* ---------- File reading ---------- */
+const uploadZone = document.getElementById("uploadZone");
+const fileInput = document.getElementById("fileInput");
+
+uploadZone.addEventListener("dragover", e => { e.preventDefault(); uploadZone.classList.add("drag"); });
+uploadZone.addEventListener("dragleave", () => uploadZone.classList.remove("drag"));
+uploadZone.addEventListener("drop", e => {
+  e.preventDefault(); uploadZone.classList.remove("drag");
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener("change", e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+function setStatus(msg, cls) {
+  const s = document.getElementById("uploadStatus");
+  s.textContent = msg;
+  s.className = "upload-status" + (cls ? " " + cls : "");
+}
+
+async function handleFile(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!["docx", "pdf", "txt"].includes(ext)) {
+    setStatus("❌ 仅支持 .docx / .pdf / .txt", "err");
+    return;
+  }
+  document.getElementById("uploadIcon").textContent = "📄";
+  document.getElementById("uploadTitle").textContent = file.name;
+  uploadZone.classList.add("has-file");
+  setStatus("⏳ 正在读取……", "");
+  try {
+    let text = "";
+    docxFormat = null; // 重置
+    originalDocxBuffer = null; // 重置（非 docx 时无原始文件）
+    if (ext === "pdf") text = await readPdf(file);
+    else if (ext === "docx") text = await readDocx(file); // readDocx 会顺便填充 docxFormat 和 originalDocxBuffer
+    else text = await file.text();
+    document.getElementById("paperText").value = text;
+    const fmtNote = (ext === "docx" && docxFormat) ? "，已读取字体/字号/行距/页边距" : "";
+    setStatus(`✅ 已读取 ${text.length} 字符${fmtNote}，点击「检查格式」开始`, "ok");
+  } catch (err) {
+    setStatus("❌ 读取失败：" + err.message, "err");
+  }
+}
+
+async function readDocx(file) {
+  const ab = await file.arrayBuffer();
+  originalDocxBuffer = ab.slice(0); // 保存原始字节副本，用于生成合规版本
+  originalDocxName = file.name;
+  const zip = await JSZip.loadAsync(ab);
+  const xml = await zip.file("word/document.xml").async("string");
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+
+  // 提取正文文字
+  const paras = [];
+  doc.querySelectorAll("w\\:p, p").forEach(p => {
+    const line = Array.from(p.querySelectorAll("w\\:t, t")).map(t => t.textContent).join("");
+    if (line.trim()) paras.push(line);
+  });
+
+  // 解析默认样式（styles.xml 中 docDefaults）
+  let stylesDoc = null;
+  try {
+    const stylesXml = await zip.file("word/styles.xml").async("string");
+    stylesDoc = new DOMParser().parseFromString(stylesXml, "application/xml");
+  } catch (e) { /* 某些文档无 styles.xml */ }
+
+  docxFormat = parseDocxFormat(doc, stylesDoc);
+  return paras.join("\n");
+}
+
+// 取属性的辅助函数（兼容带/不带 w: 前缀）
+function getAttr(el, name) {
+  if (!el) return null;
+  return el.getAttribute("w:" + name) || el.getAttribute(name);
+}
+function qs(root, selector) {
+  return root ? root.querySelector(selector) : null;
+}
+function qsa(root, selector) {
+  return root ? Array.from(root.querySelectorAll(selector)) : [];
+}
+
+function parseDocxFormat(doc, stylesDoc) {
+  const fmt = {
+    fontsAscii: {},   // 英文字体 -> 出现次数
+    fontsEastAsia: {}, // 中文字体 -> 出现次数
+    sizes: {},        // 字号(half-point) -> 次数
+    lineSpacing: null, // 行距描述
+    lineRule: null,
+    margins: null,    // {top,right,bottom,left} 单位 twip
+  };
+
+  // ---- 默认字体/字号（docDefaults）----
+  if (stylesDoc) {
+    const rPrDefault = qs(stylesDoc, "docDefaults rPrDefault rPr, docDefaults w\\:rPrDefault w\\:rPr");
+    const rFonts = qs(stylesDoc, "docDefaults rPrDefault rPr rFonts, docDefaults w\\:rPrDefault w\\:rPr w\\:rFonts");
+    if (rFonts) {
+      const ascii = getAttr(rFonts, "ascii");
+      const ea = getAttr(rFonts, "eastAsia");
+      if (ascii) fmt.fontsAscii[ascii] = (fmt.fontsAscii[ascii] || 0) + 1;
+      if (ea) fmt.fontsEastAsia[ea] = (fmt.fontsEastAsia[ea] || 0) + 1;
+    }
+    const sz = qs(stylesDoc, "docDefaults rPrDefault rPr sz, docDefaults w\\:rPrDefault w\\:rPr w\\:sz");
+    if (sz) { const v = getAttr(sz, "val"); if (v) fmt.sizes[v] = (fmt.sizes[v] || 0) + 1; }
+  }
+
+  // ---- 遍历每个 run 的字体字号 ----
+  qsa(doc, "w\\:r, r").forEach(r => {
+    const rFonts = qs(r, "rFonts, w\\:rFonts");
+    if (rFonts) {
+      const ascii = getAttr(rFonts, "ascii");
+      const ea = getAttr(rFonts, "eastAsia");
+      if (ascii) fmt.fontsAscii[ascii] = (fmt.fontsAscii[ascii] || 0) + 1;
+      if (ea) fmt.fontsEastAsia[ea] = (fmt.fontsEastAsia[ea] || 0) + 1;
+    }
+    const sz = qs(r, "sz, w\\:sz");
+    if (sz) { const v = getAttr(sz, "val"); if (v) fmt.sizes[v] = (fmt.sizes[v] || 0) + 1; }
+  });
+
+  // ---- 行距（取出现最多的段落 spacing）----
+  const spacingCounts = {};
+  qsa(doc, "w\\:pPr spacing, pPr spacing, w\\:pPr w\\:spacing, pPr w\\:spacing").forEach(sp => {
+    const line = getAttr(sp, "line");
+    const rule = getAttr(sp, "lineRule");
+    if (line) {
+      const key = line + "|" + (rule || "auto");
+      spacingCounts[key] = (spacingCounts[key] || 0) + 1;
+    }
+  });
+  const topSpacing = Object.entries(spacingCounts).sort((a, b) => b[1] - a[1])[0];
+  if (topSpacing) {
+    const [line, rule] = topSpacing[0].split("|");
+    fmt.lineSpacing = parseInt(line);
+    fmt.lineRule = rule;
+  }
+
+  // ---- 页边距（sectPr）----
+  const pgMar = qs(doc, "sectPr pgMar, w\\:sectPr w\\:pgMar, sectPr w\\:pgMar");
+  if (pgMar) {
+    fmt.margins = {
+      top: parseInt(getAttr(pgMar, "top")) || null,
+      right: parseInt(getAttr(pgMar, "right")) || null,
+      bottom: parseInt(getAttr(pgMar, "bottom")) || null,
+      left: parseInt(getAttr(pgMar, "left")) || null,
+    };
+  }
+
+  return fmt;
+}
+
+// 取出现次数最多的 key
+function topKey(obj) {
+  const e = Object.entries(obj).sort((a, b) => b[1] - a[1])[0];
+  return e ? e[0] : null;
+}
+
+async function readPdf(file) {
+  const ab = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    pages.push(content.items.map(it => it.str).join(" "));
+  }
+  return pages.join("\n");
+}
+
+/* ---------- Language detection ---------- */
+function detectLanguage(text) {
+  const cnChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const enChars = (text.match(/[a-zA-Z]/g) || []).length;
+  return cnChars >= enChars ? "cn" : "en";
+}
+
+/* ---------- Checkers ---------- */
+function checkChinese(text) {
+  const issues = [];
+  const passes = [];
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+
+  // 1. 结构完整性
+  const hasAbstract = /摘\s*要/.test(text);
+  const hasKeywords = /关键词|關鍵詞/.test(text);
+  hasAbstract ? passes.push("含摘要") :
+    issues.push(warn("缺少摘要", "全文未检测到「摘要」", "学术论文应包含中文摘要（200字以内）", "《历史研究》投稿体例", "在标题下方、正文前添加摘要段落"));
+  hasKeywords ? passes.push("含关键词") :
+    issues.push(warn("缺少关键词", "全文未检测到「关键词」", "应标注3-5个关键词", "《历史研究》投稿体例", "在摘要下方添加：关键词：XXX；XXX；XXX"));
+
+  // 2. 注释序号样式：中文应为圈号①②③
+  const hasCircleNum = /[①②③④⑤⑥⑦⑧⑨⑩]/.test(text);
+  const hasBracketNum = /\[\d+\]/.test(text);
+  if (hasBracketNum && !hasCircleNum) {
+    issues.push(err("注释序号样式错误", "检测到 [1] [2] 式方括号序号", "《历史研究》要求页下脚注用圈号①②③，每页重新编号", "《历史研究》规范·三", "将 [1] 改为脚注圈号①，并置于页下"));
+  } else if (hasCircleNum) {
+    passes.push("注释使用圈号①②③（符合规范）");
+  }
+
+  // 3. 文末参考文献表（中文规范不用）
+  if (/参考文献\s*[:：]?\s*$/m.test(text) || /^参考文献/m.test(text)) {
+    issues.push(warn("可能含文末参考文献表", "检测到「参考文献」标题", "《历史研究》采用页下脚注，不设文末参考文献表（古籍特例除外）", "《历史研究》规范·三", "改为页下脚注形式，删除独立参考文献表"));
+  }
+
+  // 4. "同上""同前"
+  if (/同上|同前注?|前揭/.test(text)) {
+    issues.push(err("使用了简略重复引用", "检测到「同上/同前/前揭」", "《历史研究》要求每次重复引用都完整著录，不用简略表述", "《历史研究》规范·三·5", "将「同上」替换为完整的文献著录信息"));
+  } else {
+    passes.push("未使用「同上/同前」简略引用");
+  }
+
+  // 5. 标点：中英文混用检测
+  const enComma = (text.match(/[\u4e00-\u9fa5]\s*,\s*[\u4e00-\u9fa5]/g) || []);
+  if (enComma.length > 0) {
+    issues.push(err("中英文标点混用", `检测到 ${enComma.length} 处中文之间使用英文逗号`, "中文行文应使用中文标点「，」", "《历史研究》规范·七·3", "将中文句子中的半角逗号 , 改为全角 ，"));
+  } else {
+    passes.push("未发现明显中英文标点混用");
+  }
+
+  // 6. 连接号：页码区间应使用一字线或浪纹，常见错误是英文连字符
+  const pageRange = text.match(/第?\d+\s*[-–—~]\s*\d+\s*页/g) || [];
+  // 这里只提示，不强制
+  if (pageRange.length > 0) passes.push(`检测到 ${pageRange.length} 处页码区间标注`);
+
+  // 7. 标题层级格式
+  const h1 = lines.filter(l => /^[一二三四五六七八九十]+、/.test(l));
+  if (h1.length > 0) {
+    passes.push(`检测到 ${h1.length} 个一级标题（一、二、…格式）`);
+    // 检查一级标题后是否误用标点
+    const badH1 = h1.filter(l => /^[一二三四五六七八九十]+、\s*[，。；：]/.test(l));
+    if (badH1.length) issues.push(err("一级标题格式问题", badH1[0], "一级标题序号「一、」后空一格直接接内容，不加其他标点", "《历史研究》规范·二·1", "一、近代史的分期问题"));
+  }
+
+  // 8. 专著著录格式抽查：检测书名号 + 出版社模式
+  const bookCite = text.match(/《[^》]+》[，,]\s*[^，,]+[：:]\s*[^，,]+[，,]\s*\d{4}年/g) || [];
+  if (bookCite.length > 0) passes.push(`检测到 ${bookCite.length} 处疑似规范的专著著录`);
+
+  return { spec: "《历史研究》格式规范（含 GB/T 7714-2025）", issues, passes };
+}
+
+function checkEnglish(text) {
+  const issues = [];
+  const passes = [];
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+
+  // 1. Bibliography 必备
+  const hasBib = /bibliography|works cited/i.test(text);
+  hasBib ? passes.push("含 Bibliography 参考文献表") :
+    issues.push(warn("缺少 Bibliography", "未检测到文末参考文献表", "Chicago Notes-Bibliography 体例要求附独立 Bibliography（按作者姓氏 A-Z 排序）", "Chicago 18th·三", "在文末添加 Bibliography 部分"));
+
+  // 2. Abstract / keywords
+  if (!/abstract/i.test(text)) {
+    issues.push(warn("缺少 Abstract", "未检测到 Abstract", "多数期刊要求英文摘要", "通用投稿要求", "在标题下方添加 Abstract 段落"));
+  } else passes.push("含 Abstract");
+
+  // 3. 注释序号：英文应用阿拉伯数字，检查是否误用圈号
+  if (/[①②③④⑤]/.test(text)) {
+    issues.push(err("注释序号样式错误", "检测到圈号①②③", "Chicago 体例用阿拉伯数字 1, 2, 3 连续编号", "Chicago 18th·二", "将圈号改为上标阿拉伯数字"));
+  } else {
+    passes.push("未误用中文圈号序号");
+  }
+
+  // 4. 连接号：页码/年份区间应用 en dash (–) 而非 hyphen (-)
+  const hyphenRange = text.match(/\b\d+\s*-\s*\d+\b/g) || [];
+  const enDashRange = text.match(/\d+\s*–\s*\d+/g) || [];
+  if (hyphenRange.length > 2) {
+    issues.push(err("页码/年份区间连接号错误", `检测到 ${hyphenRange.length} 处使用短横线 (-)`, "Chicago 要求数字区间用 en dash (–)，不用 hyphen (-)", "Chicago 18th·四·3", "如 199-215 应改为 199–215"));
+  } else if (enDashRange.length > 0) {
+    passes.push("数字区间使用 en dash（符合规范）");
+  }
+
+  // 5. Ibid. 检查（英文允许，作为正向通过）
+  if (/\bibid\b\.?/i.test(text)) passes.push("使用 Ibid. 简略引用（符合 Chicago 体例）");
+
+  // 6. 中文标点混入
+  if (/[，。；：「」『』《》]/.test(text)) {
+    issues.push(err("混入中文标点", "英文论文中检测到中文标点（，。《》等）", "英文论文应全程使用英文标点", "Chicago 18th 通用", "将中文标点替换为对应英文标点"));
+  } else {
+    passes.push("未混入中文标点");
+  }
+
+  // 7. 标题层级 I. A. 1. a.
+  const romanH = lines.filter(l => /^[IVX]+\.\s/.test(l));
+  if (romanH.length > 0) passes.push(`检测到 ${romanH.length} 个罗马数字一级标题（I. II. 格式）`);
+
+  // 8. 期刊著录抽查：斜体期刊名难以从纯文本判断，仅检查 vol./no. 模式
+  const journalCite = text.match(/vol\.\s*\d+,\s*no\.\s*\d+/gi) || [];
+  if (journalCite.length > 0) passes.push(`检测到 ${journalCite.length} 处 vol./no. 期刊著录`);
+
+  return { spec: "Chicago Manual of Style 18th Edition (2024)", issues, passes };
+}
+
+function err(title, current, requirement, source, suggestion) {
+  return { type: "err", title, current, requirement, source, suggestion };
+}
+function warn(title, current, requirement, source, suggestion) {
+  return { type: "warn", title, current, requirement, source, suggestion };
+}
+
+/* ---------- Run ---------- */
+function runCheck() {
+  const text = document.getElementById("paperText").value.trim();
+  if (!text) { alert("请先粘贴论文文本或上传文件"); return; }
+
+  let lang = currentMode === "auto" ? detectLanguage(text) : currentMode;
+  const result = lang === "cn" ? checkChinese(text) : checkEnglish(text);
+
+  // 若上传的是 .docx，追加字体/字号/行距/页边距检查
+  if (docxFormat) {
+    const fmtResult = checkDocxFormat(docxFormat, lang);
+    result.issues.push(...fmtResult.issues);
+    result.passes.push(...fmtResult.passes);
+  } else {
+    // 非 docx：提示这些项无法检测
+    result.passes.push("ℹ️ 字体/字号/行距/页边距：当前为文本或 PDF 输入，无法检测，请上传 .docx 或在 Word 中人工核对");
+  }
+
+  lastReport = { ...result, lang };
+  renderReport(lastReport);
+}
+
+/* ---------- .docx 字体/字号/行距/页边距检查 ---------- */
+// twip 换算：1 cm = 567 twip；half-point：五号=21(10.5pt)，小四=24(12pt)
+function checkDocxFormat(fmt, lang) {
+  const issues = [];
+  const passes = [];
+
+  const mainEa = topKey(fmt.fontsEastAsia);   // 最常用中文字体
+  const mainAscii = topKey(fmt.fontsAscii);   // 最常用英文字体
+  const mainSize = topKey(fmt.sizes);         // 最常用字号(half-point)
+
+  if (lang === "cn") {
+    // 中文正文应为宋体五号
+    if (mainEa) {
+      if (/宋体|SimSun|Song/i.test(mainEa)) passes.push(`中文正文字体为「${mainEa}」（符合宋体要求）`);
+      else issues.push(err("中文正文字体不符", `主要中文字体为「${mainEa}」`, "《历史研究》要求正文用宋体五号", "《历史研究》规范·一·2", "将正文中文字体改为宋体"));
+    }
+    // 英文字体应为 Times New Roman
+    if (mainAscii) {
+      if (/Times New Roman/i.test(mainAscii)) passes.push(`英文字体为 Times New Roman（符合要求）`);
+      else issues.push(warn("英文字体建议核查", `主要英文字体为「${mainAscii}」`, "全文英文应统一为 Times New Roman", "《历史研究》规范·一·2", "将英文字体改为 Times New Roman"));
+    }
+    // 字号：正文五号 = 21 half-point (10.5pt)，允许 ±1 容差
+    if (mainSize) {
+      const hp = parseInt(mainSize);
+      const pt = hp / 2;
+      if (Math.abs(hp - 21) <= 1) passes.push(`正文字号约为五号（${pt}pt，符合要求）`);
+      else issues.push(warn("正文字号需核查", `主要字号为 ${pt}pt`, "《历史研究》正文要求五号（10.5pt）", "《历史研究》规范·一·2", "将正文字号设为五号"));
+    }
+    // 行距：中文要求单倍。line=240 且 lineRule=auto 视为单倍
+    if (fmt.lineSpacing != null) {
+      const desc = describeLineSpacing(fmt.lineSpacing, fmt.lineRule);
+      if (fmt.lineRule === "auto" && Math.abs(fmt.lineSpacing - 240) < 10) passes.push("行距为单倍（符合要求）");
+      else issues.push(warn("行距需核查", `检测到行距约为 ${desc}`, "《历史研究》要求单倍行距", "《历史研究》规范·一·3", "将行距设为单倍"));
+    } else {
+      passes.push("行距：文档未显式设置（通常即单倍，符合要求；如有疑问请在 Word 中确认）");
+    }
+    // 页边距：上下左右 2cm = 1134 twip
+    checkMargins(fmt.margins, 1134, "2cm", "《历史研究》规范·一·1", issues, passes);
+
+  } else {
+    // 英文 Chicago：全文 Times New Roman 12pt，双倍行距，页边距 2.54cm(1英寸)=1440 twip
+    if (mainAscii) {
+      if (/Times New Roman/i.test(mainAscii)) passes.push(`字体为 Times New Roman（符合 Chicago 要求）`);
+      else issues.push(err("字体不符", `主要字体为「${mainAscii}」`, "Chicago 要求全文 Times New Roman", "Chicago 18th·一", "将字体改为 Times New Roman"));
+    }
+    if (mainSize) {
+      const hp = parseInt(mainSize);
+      const pt = hp / 2;
+      if (Math.abs(hp - 24) <= 1) passes.push("字号约为 12pt（符合要求）");
+      else issues.push(warn("字号需核查", `主要字号为 ${pt}pt`, "Chicago 要求 12pt", "Chicago 18th·一", "将字号设为 12pt"));
+    }
+    if (fmt.lineSpacing != null) {
+      const desc = describeLineSpacing(fmt.lineSpacing, fmt.lineRule);
+      if (fmt.lineRule === "auto" && Math.abs(fmt.lineSpacing - 480) < 20) passes.push("行距为双倍（符合要求）");
+      else issues.push(err("行距不符", `检测到行距约为 ${desc}`, "Chicago 要求全文双倍行距（double-spaced）", "Chicago 18th·一·1", "将行距设为双倍（2.0）"));
+    } else {
+      issues.push(warn("行距需核查", "文档未显式设置行距（可能为单倍）", "Chicago 要求全文双倍行距（double-spaced）", "Chicago 18th·一·1", "将行距设为双倍（2.0）"));
+    }
+    checkMargins(fmt.margins, 1440, "2.54cm（1英寸）", "Chicago 18th·一·1", issues, passes);
+  }
+
+  return { issues, passes };
+}
+
+function describeLineSpacing(line, rule) {
+  if (rule === "auto") {
+    const mult = (line / 240).toFixed(2);
+    return `${mult} 倍`;
+  }
+  // exact / atLeast: line 单位是 twip，换算成 pt
+  return `${(line / 20).toFixed(0)}pt（固定值）`;
+}
+
+function checkMargins(margins, target, targetLabel, source, issues, passes) {
+  if (!margins) return;
+  const tol = 60; // 容差约 0.1cm
+  const sides = [["上", margins.top], ["下", margins.bottom], ["左", margins.left], ["右", margins.right]];
+  const bad = sides.filter(([n, v]) => v != null && Math.abs(v - target) > tol);
+  if (bad.length === 0) {
+    passes.push(`页边距为 ${targetLabel}（符合要求）`);
+  } else {
+    const detail = bad.map(([n, v]) => `${n} ${(v / 567).toFixed(2)}cm`).join("，");
+    issues.push(warn("页边距不符", `检测到 ${detail}`, `要求上下左右均为 ${targetLabel}`, source, `将页边距统一设为 ${targetLabel}`));
+  }
+}
+
+function esc(s) { return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+
+function renderReport(r) {
+  const errs = r.issues.filter(i => i.type === "err");
+  const warns = r.issues.filter(i => i.type === "warn");
+  let html = "";
+
+  html += `<div class="report-head">
+    <div class="spec-name">适用规范：<b>${esc(r.spec)}</b>${currentMode === "auto" ? "（自动判断）" : "（手动指定）"}</div>
+    <div class="summary-stats">
+      <div class="stat ok"><span class="num">${r.passes.length}</span><span class="label">项符合</span></div>
+      <div class="stat err"><span class="num">${errs.length}</span><span class="label">处需改</span></div>
+      <div class="stat warn"><span class="num">${warns.length}</span><span class="label">项提示</span></div>
+    </div>
+  </div>`;
+
+  html += `<div class="section-title ok">✅ 符合规范（${r.passes.length}）</div>`;
+  if (r.passes.length) {
+    r.passes.forEach(p => html += `<div class="pass-item">${esc(p)}</div>`);
+  } else {
+    html += `<div class="empty-pass">暂无明确通过项</div>`;
+  }
+
+  if (errs.length) {
+    html += `<div class="section-title err">❌ 需要修改（${errs.length}）</div>`;
+    errs.forEach((it, idx) => html += issueHtml(it, idx + 1));
+  }
+
+  if (warns.length) {
+    html += `<div class="section-title warn">⚠️ 结构与提示（${warns.length}）</div>`;
+    warns.forEach((it, idx) => html += issueHtml(it, idx + 1));
+  }
+
+  html += `<div class="action-row" style="margin-top:24px">
+    <button class="btn" onclick="exportTxt()">导出问题清单 (.txt)</button>
+    <button class="btn btn-ghost" onclick="window.print()">打印 / 存为 PDF</button>`;
+  if (originalDocxBuffer) {
+    html += `
+    <button class="btn" id="genBtn" onclick="generateCompliantDocx()" style="background:var(--green);border-color:var(--green)">⚡ 生成合规版 .docx</button>`;
+  }
+  html += `</div>`;
+
+  if (originalDocxBuffer) {
+    html += `<div style="font-size:12px;color:var(--text-light);margin-top:8px;line-height:1.6">
+      ⚡「生成合规版」会自动修正<b>字体、字号、行距、页边距、段首缩进</b>这些全局格式，并完整保留你的原文内容。
+      脚注、文献著录等复杂内容请对照上方清单手动调整。
+    </div>`;
+  }
+
+  const rep = document.getElementById("report");
+  rep.innerHTML = html;
+  rep.style.display = "block";
+  rep.scrollIntoView({ behavior: "smooth" });
+}
+
+function issueHtml(it, n) {
+  return `<div class="issue ${it.type === "warn" ? "warn" : ""}">
+    <div class="issue-title">问题 ${n}：${esc(it.title)}</div>
+    <div class="issue-row"><span class="k">现状</span><span class="v">${esc(it.current)}</span></div>
+    <div class="issue-row"><span class="k">规范要求</span><span class="v">${esc(it.requirement)}</span></div>
+    <div class="issue-row"><span class="k">建议改为</span><span class="v"><code>${esc(it.suggestion)}</code></span></div>
+    <div class="issue-row"><span class="k">来源</span><span class="v src">${esc(it.source)}</span></div>
+  </div>`;
+}
+
+/* ---------- Export ---------- */
+function exportTxt() {
+  if (!lastReport) return;
+  const r = lastReport;
+  const errs = r.issues.filter(i => i.type === "err");
+  const warns = r.issues.filter(i => i.type === "warn");
+  let out = "历史论文格式检查报告\n";
+  out += "========================================\n";
+  out += `适用规范：${r.spec}\n`;
+  out += `符合 ${r.passes.length} 项 / 需改 ${errs.length} 处 / 提示 ${warns.length} 项\n\n`;
+
+  out += "【✅ 符合规范】\n";
+  r.passes.forEach(p => out += `  · ${p}\n`);
+
+  if (errs.length) {
+    out += "\n【❌ 需要修改】\n";
+    errs.forEach((it, i) => {
+      out += `\n问题 ${i + 1}：${it.title}\n`;
+      out += `  现状：${it.current}\n`;
+      out += `  规范要求：${it.requirement}\n`;
+      out += `  建议改为：${it.suggestion}\n`;
+      out += `  来源：${it.source}\n`;
+    });
+  }
+  if (warns.length) {
+    out += "\n【⚠️ 结构与提示】\n";
+    warns.forEach((it, i) => {
+      out += `\n提示 ${i + 1}：${it.title}\n`;
+      out += `  现状：${it.current}\n`;
+      out += `  规范要求：${it.requirement}\n`;
+      out += `  建议：${it.suggestion}\n`;
+      out += `  来源：${it.source}\n`;
+    });
+  }
+  out += "\n----------------------------------------\n";
+  out += "注：本工具仅检查有明确规则的格式项，字体/字号/行距/页边距需在 Word 中人工核对。\n";
+
+  const blob = new Blob([out], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "格式检查报告.txt";
+  a.click();
+}
+
+/* ---------- 生成合规版 .docx ---------- */
+// 通过改写原始 docx 的 XML，修正全局字体/字号/行距/页边距/段首缩进，保留全部原文内容
+async function generateCompliantDocx() {
+  if (!originalDocxBuffer) { alert("请先上传 .docx 文件"); return; }
+  const btn = document.getElementById("genBtn");
+  const oldLabel = btn ? btn.textContent : "";
+  if (btn) { btn.textContent = "⏳ 生成中…"; btn.disabled = true; }
+
+  try {
+    const lang = lastReport ? lastReport.lang : "cn";
+    // 目标参数
+    const cfg = lang === "cn"
+      ? { eaFont: "宋体", asciiFont: "Times New Roman", sz: "21", line: "240", margin: "1134", indentChars: "2" } // 五号/单倍/2cm/缩进2字符
+      : { eaFont: "SimSun", asciiFont: "Times New Roman", sz: "24", line: "480", margin: "1440", indentChars: null }; // 12pt/双倍/1英寸
+
+    const zip = await JSZip.loadAsync(originalDocxBuffer);
+
+    /* ---- 1. 改 styles.xml：默认字体、字号、行距 ---- */
+    let styles = await zip.file("word/styles.xml").async("string");
+
+    // 1a. 默认字号：docDefaults 里的 sz / szCs
+    styles = styles.replace(/(<w:rPrDefault>[\s\S]*?)<w:sz w:val="\d+"\/>/, `$1<w:sz w:val="${cfg.sz}"/>`);
+    styles = styles.replace(/(<w:rPrDefault>[\s\S]*?)<w:szCs w:val="\d+"\/>/, `$1<w:szCs w:val="${cfg.sz}"/>`);
+
+    // 1b. 默认字体：把 docDefaults 里的 rFonts 替换为显式字体（去掉 theme 引用）
+    styles = styles.replace(
+      /(<w:rPrDefault>[\s\S]*?)<w:rFonts[^/]*\/>/,
+      `$1<w:rFonts w:ascii="${cfg.asciiFont}" w:hAnsi="${cfg.asciiFont}" w:eastAsia="${cfg.eaFont}" w:cs="${cfg.asciiFont}"/>`
+    );
+
+    // 1c. 默认行距：pPrDefault 里的 spacing line
+    if (/<w:pPrDefault>[\s\S]*?<w:spacing[^/]*\/>/.test(styles)) {
+      styles = styles.replace(
+        /(<w:pPrDefault>[\s\S]*?<w:spacing[^>]*?)w:line="\d+" w:lineRule="\w+"/,
+        `$1w:line="${cfg.line}" w:lineRule="auto"`
+      );
+      // 若 spacing 没有 line 属性，补上
+      styles = styles.replace(
+        /(<w:pPrDefault>[\s\S]*?<w:spacing)((?:(?!w:line)[^>])*?)\/>/,
+        `$1$2 w:line="${cfg.line}" w:lineRule="auto"/>`
+      );
+    } else {
+      // 完全没有 pPrDefault spacing，注入一个
+      styles = styles.replace(
+        /<w:pPrDefault><w:pPr>/,
+        `<w:pPrDefault><w:pPr><w:spacing w:line="${cfg.line}" w:lineRule="auto"/>`
+      );
+    }
+    zip.file("word/styles.xml", styles);
+
+    /* ---- 2. 改 document.xml：页边距 + 每段行距/缩进 + run 字体 ---- */
+    let docXml = await zip.file("word/document.xml").async("string");
+
+    // 2a. 页边距
+    docXml = docXml.replace(
+      /<w:pgMar[^/]*\/>/g,
+      `<w:pgMar w:top="${cfg.margin}" w:right="${cfg.margin}" w:bottom="${cfg.margin}" w:left="${cfg.margin}" w:header="720" w:footer="720" w:gutter="0"/>`
+    );
+
+    // 2b. 覆盖所有 run 的字体（保证字体被强制统一）
+    docXml = docXml.replace(
+      /<w:rFonts[^/]*\/>/g,
+      `<w:rFonts w:ascii="${cfg.asciiFont}" w:hAnsi="${cfg.asciiFont}" w:eastAsia="${cfg.eaFont}" w:cs="${cfg.asciiFont}"/>`
+    );
+
+    // 2c. 覆盖所有 run 的字号（sz / szCs），保留标题等加粗结构不动
+    docXml = docXml.replace(/<w:sz w:val="\d+"\/>/g, `<w:sz w:val="${cfg.sz}"/>`);
+    docXml = docXml.replace(/<w:szCs w:val="\d+"\/>/g, `<w:szCs w:val="${cfg.sz}"/>`);
+
+    zip.file("word/document.xml", docXml);
+
+    /* ---- 3. 重新打包并下载 ---- */
+    const out = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const base = originalDocxName.replace(/\.docx$/i, "");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(out);
+    a.download = `${base}_合规版.docx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+    if (btn) { btn.textContent = "✅ 已生成，请查看下载"; setTimeout(() => { btn.textContent = oldLabel; btn.disabled = false; }, 2500); }
+  } catch (e) {
+    alert("生成失败：" + e.message + "\n\n建议改用「导出问题清单」对照手动修改。");
+    if (btn) { btn.textContent = oldLabel; btn.disabled = false; }
+  }
+}
+
+function clearAll() {
+  document.getElementById("paperText").value = "";
+  document.getElementById("report").style.display = "none";
+  document.getElementById("uploadIcon").textContent = "⬆️";
+  document.getElementById("uploadTitle").textContent = "拖放或点击上传论文";
+  uploadZone.classList.remove("has-file");
+  setStatus("", "");
+  lastReport = null;
+  docxFormat = null;
+  originalDocxBuffer = null;
+  originalDocxName = "";
+}
+</script>
+</body>
+</html>
